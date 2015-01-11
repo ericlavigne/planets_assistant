@@ -1,6 +1,8 @@
 /target
 /classes
 /checkouts
+/resources/public/js/out
+/resources/public/js/app.js
 pom.xml
 pom.xml.asc
 *.jar
