@@ -1,6 +1,22 @@
 (ns vgap.core-test
   (:require [clojure.test :refer :all]
-            [vgap.core :refer :all]))
+            [vgap.core :refer :all]
+            [clj-webdriver.taxi :as t]
+            [clj-webdriver.firefox :as ff]
+))
+
+;; A simple fixture that sets up test driver
+(defn selenium-fixture
+  [& browsers]
+  (fn [test]
+    (doseq [browser browsers]
+      (println (str "\n[ Testing " browser " ]"))
+      (t/set-driver! {:browser browser})
+      (test)
+      (Thread/sleep 1000)
+      (t/quit))))
+
+(use-fixtures :once (selenium-fixture :firefox ))
 
 (def homeworld
      {"id" 24, "name" "Kaye's World", "temp" 50, "ownerid" 6, "x" 1845, "y" 1524,
@@ -35,4 +51,21 @@
      (is (= 261 (planet-max-factories homeworld)))
      (is (= 211 (planet-max-defense homeworld)))
   ))
+
+
+(deftest ^:browser login-test
+  (t/to "http://localhost:3449")
+
+  (is (re-find #"Login" (t/text "body")))
+
+  (let [inputs (vec (t/elements "input"))
+        user-field (inputs 0)
+        pass-field (inputs 1)
+        login-button (inputs 2)]
+    (t/input-text user-field (setting :test-username))
+    (t/input-text pass-field (setting :test-password))
+    (t/click login-button))
+
+  (t/wait-until #(re-find #"Logout" (t/text "body")))
+)
 

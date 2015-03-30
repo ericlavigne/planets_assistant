@@ -1,8 +1,13 @@
 (ns vgap.core
   (:require [clj-http.client :as client]
-            [clojure.data.json :as json])
+            [clojure.data.json :as json]
+            [clojure.edn :as edn])
   (:use [clojure.string :only (join split)])
   (:gen-class))
+
+(defn setting [k]
+  (let [s (edn/read-string (slurp "settings.clj"))]
+    (s k)))
 
 (defn authenticate [username password]
   "Converts user/pass into apikey"

@@ -54,12 +54,24 @@
                                         :optimizations :none
                                         :pretty-print  true}}}}
 
+  :test-selectors {:default (complement :browser)
+                   :browser :browser}
+
   :profiles {:dev {:repl-options {:init-ns vgap.handler
                                   :nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
 
                    :dependencies [[ring-mock "0.1.5"]
                                   [ring/ring-devel "1.3.2"]
-                                  [pjstadig/humane-test-output "0.6.0"]]
+                                  [pjstadig/humane-test-output "0.6.0"]
+
+                                  [clj-webdriver "0.6.0"
+                                      :exclusions [org.seleniumhq.selenium/selenium-server
+                                                   org.seleniumhq.selenium/selenium-java
+                                                   org.seleniumhq.selenium/selenium-remote-driver]]
+                                  [org.seleniumhq.selenium/selenium-server "2.45.0"]
+                                  [org.seleniumhq.selenium/selenium-java "2.45.0"]
+                                  [org.seleniumhq.selenium/selenium-remote-driver "2.45.0"]
+                                 ]
 
                    :plugins [[lein-figwheel "0.2.0-SNAPSHOT"]]
 
