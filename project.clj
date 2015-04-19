@@ -9,6 +9,9 @@
 
   :dependencies [[org.clojure/core.cache "0.6.3"]
                  [org.clojure/clojure "1.6.0"]
+                 [im.chit/adi "0.3.1-SNAPSHOT"]
+                 [com.datomic/datomic-free "0.9.5052" :exclusions [joda-time]]
+                 [clj-time "0.6.0"]
                  [clj-http "0.9.2"]
                  [org.clojure/data.json "0.2.5"]
                  [com.facebook/react "0.11.2"]
