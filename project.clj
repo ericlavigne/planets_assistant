@@ -7,7 +7,8 @@
 
   :source-paths ["src/clj" "src/cljs"]
 
-  :dependencies [[org.clojure/clojure "1.6.0"]
+  :dependencies [[org.clojure/core.cache "0.6.3"]
+                 [org.clojure/clojure "1.6.0"]
                  [clj-http "0.9.2"]
                  [org.clojure/data.json "0.2.5"]
                  [com.facebook/react "0.11.2"]
@@ -54,8 +55,9 @@
                                         :optimizations :none
                                         :pretty-print  true}}}}
 
-  :test-selectors {:default (complement :browser)
-                   :browser :browser}
+  :test-selectors {:default (constantly true)
+                   :browser :browser
+                   :non-browser (complement :browser)}
 
   :profiles {:dev {:repl-options {:init-ns vgap.handler
                                   :nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
