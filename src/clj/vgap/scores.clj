@@ -59,6 +59,6 @@
                                      :required true}]}
                  })
 
-(def adi-db (adi/connect! "datomic:mem://vgap" vgap-schema true true))
+(def adi-db (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
 
 
