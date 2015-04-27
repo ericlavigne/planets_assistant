@@ -1,6 +1,9 @@
 (ns vgap.scores
   (:require [adi.core :as adi]
-            [datomic.api :as datomic]))
+            [datomic.api :as datomic]
+            [clj-http.client :as client]
+            [clojure.data.json :as json]
+))
 
 (def vgap-schema {
                   :game {:nuid    [{:type :long
@@ -61,4 +64,25 @@
 
 (def adi-db (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
 
+(defn user-games [username]
+  (mapcat #(json/read-str
+             (:body (client/get "http://api.planets.nu/games/list"
+                                {:query-params {"username" username
+                                                "scope" %}})))
+          ["0" "1"]))
+
+(defn fetch-game-events [gameid]
+  (let [events (get (json/read-str
+                      (:body (client/get "http://api.planets.nu/game/loadevents"
+                                         {:query-params {"gameid" gameid}})))
+                    "events" :api-no-events)
+        joins (filter #(= 3 (% "eventtype")) events)
+        processed-joins (map (fn [evt] {:type :join :turn (evt "turn")
+                                        :account-id (evt "accountid") :player-num (evt "playerid")
+                                        :account-name (clojure.string/replace (evt "description")
+                                                                              #" has joined.*" "")})
+                             joins)
+        uncategorized (clojure.set/difference (set events) (set joins))
+        ]
+    (concat processed-joins uncategorized)))
 
