@@ -38,5 +38,12 @@
                           ]]
        (doseq [e expected-events]
          (is (some #{e} team-of-3-events)))))
+  (testing "Fetch events for two winners, one of which has space in name"
+    (let [team-of-3-events (fetch-game-events 54512)
+          expected-events [{:type :win :turn 129 :date (time/local-date 2014 4 12) :account-name "big beefer"}
+                           {:type :win :turn 129 :date (time/local-date 2014 4 12) :account-name "lqdvnm"}
+                          ]]
+       (doseq [e expected-events]
+         (is (some #{e} team-of-3-events)))))
 )
 

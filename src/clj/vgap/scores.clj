@@ -115,8 +115,11 @@
         wins (filter #(= 6 (% "eventtype")) events)
         processed-wins (mapcat (fn [evt]
                                  (let [account-names (.split (clojure.string/replace
-                                                               (clojure.string/replace (evt "description")
-                                                                                       #" ha[sve]+ won.*" "")
+                                                               (clojure.string/replace
+                                                                 (clojure.string/replace
+                                                                   (evt "description")
+                                                                   "+" " ")
+                                                                 #" ha[sve]+ won.*" "")
                                                                "@" "")
                                                              " and ")]
                                    (map (fn [name] {:type :win :turn (evt "turn") :account-name name
