@@ -3,6 +3,8 @@
             [datomic.api :as datomic]
             [clj-http.client :as client]
             [clojure.data.json :as json]
+            [clj-time.core :as time]
+            [clj-time.format :as timef]
 ))
 
 (def vgap-schema {
@@ -64,6 +66,12 @@
 
 (def adi-db (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
 
+(def nu-datetime-format (timef/formatter "MM/dd/YYYY h:mm:ss a"))
+
+(defn parse-datetime-as-date [datetime-string]
+  "Parse Nu-style datetime like 9/23/2014 6:35:52 PM and return date (without time)"
+  (.toLocalDate (timef/parse nu-datetime-format datetime-string)))
+
 (defn user-games [username]
   (mapcat #(json/read-str
              (:body (client/get "http://api.planets.nu/games/list"
@@ -98,7 +106,29 @@
         processed-deads (map (fn [evt] {:type :dead :turn (evt "turn")
                                         :player-num (evt "playerid")})
                              deads)
-        uncategorized (clojure.set/difference (set events) (set joins) (set resigns) (set drops) (set deads))
+        creates (filter #(= 1 (% "eventtype")) events)
+        processed-creates (map (fn [evt] {:type :create :date (parse-datetime-as-date (evt "dateadded"))})
+                               creates)
+        starts (filter #(= 2 (% "eventtype")) events)
+        processed-starts (map (fn [evt] {:type :start :date (parse-datetime-as-date (evt "dateadded"))})
+                              starts)
+        wins (filter #(= 6 (% "eventtype")) events)
+        processed-wins (mapcat (fn [evt]
+                                 (let [account-names (.split (clojure.string/replace
+                                                               (clojure.string/replace (evt "description")
+                                                                                       #" ha[sve]+ won.*" "")
+                                                               "@" "")
+                                                             " and ")]
+                                   (map (fn [name] {:type :win :turn (evt "turn") :account-name name
+                                                    :date (parse-datetime-as-date (evt "dateadded"))})
+                                        account-names)))
+                               wins)
+        almost-wins (filter #(= 5 (% "eventtype")) events)
+        uncategorized (clojure.set/difference (set events)
+                                              (set (concat joins resigns drops deads creates starts wins almost-wins)))
         ]
-    (concat processed-joins processed-resigns processed-drops processed-deads uncategorized)))
+    (concat processed-joins processed-resigns processed-drops
+            processed-deads processed-creates processed-starts
+            processed-wins
+            uncategorized)))
 
