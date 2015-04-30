@@ -154,6 +154,18 @@
                                      status (case name "dead" :dead "open" :open :live)]
                                  (merge (if (= status :live) {:account-name name} {})
                                         {:player-num (inc i) :race race :status status})))
-                             (drop 1 (first (get api-scores "planets"))))]
-    {:raw api-scores :players players}))
+                             (drop 1 (first (get api-scores "planets"))))
+        turn-to-nested-planets (group-by first (drop 1 (api-scores "planets")))
+        turn-to-nested-military (group-by first (drop 1 (api-scores "military")))
+        scores (mapcat (fn [turn]
+                         (let [planet-scores (drop 1 (first (get turn-to-nested-planets turn)))
+                               military-scores (drop 1 (first (get turn-to-nested-military turn)))]
+                           (map (fn [i planet-score military-score]
+                                  {:turn turn :player-num (inc i) :planets planet-score :military military-score})
+                                (range (count planet-scores))
+                                planet-scores
+                                military-scores)))
+                       (keys turn-to-nested-planets))
+        ]
+    {:raw api-scores :players players :scores scores}))
 
