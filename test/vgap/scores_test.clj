@@ -45,5 +45,16 @@
                           ]]
        (doseq [e expected-events]
          (is (some #{e} team-of-3-events)))))
+  (testing "Fetch scores for game with spaces in usernames and some open/dead players"
+    (let [small-world-scores (fetch-game-scores 45277)
+          expected-players [{:player-num 1 :race "The Feds" :status :live :account-name "gloria stitz"}]
+          expected-planets []
+          expected-military []]
+      (doseq [tests-and-place [[expected-players :players] [expected-planets :planets] [expected-military :military]]]
+        (doseq [test-case (get tests-and-place 0)]
+          (is (some #{test-case}
+                    (get small-world-scores
+                         (get tests-and-place 1)
+                         [(get tests-and-place 1)])))))))
 )
 

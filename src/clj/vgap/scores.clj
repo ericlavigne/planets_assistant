@@ -72,6 +72,14 @@
   "Parse Nu-style datetime like 9/23/2014 6:35:52 PM and return date (without time)"
   (.toLocalDate (timef/parse nu-datetime-format datetime-string)))
 
+(defn string-replace
+  "Like clojure.string/replace but supports multiple regex/replacement pairs"
+  [string regex replacement & others]
+    (let [string (clojure.string/replace string regex replacement)]
+      (if (empty? others)
+          string
+          (apply string-replace string (first others) (second others) (drop 2 others)))))
+
 (defn user-games [username]
   (mapcat #(json/read-str
              (:body (client/get "http://api.planets.nu/games/list"
@@ -134,4 +142,18 @@
             processed-deads processed-creates processed-starts
             processed-wins
             uncategorized)))
+
+(defn fetch-game-scores [gameid]
+  (let [api-scores (get (json/read-str
+                          (:body (client/get "http://api.planets.nu/account/loadscores"
+                                             {:query-params {"gameid" gameid}})))
+                        "scores" :api-no-scores)
+        players (map-indexed (fn [i p]
+                               (let [race (string-replace p #" \(.*" "")
+                                     name (string-replace p #".*\(" "" #"\)" "")
+                                     status (case name "dead" :dead "open" :open :live)]
+                                 (merge (if (= status :live) {:account-name name} {})
+                                        {:player-num (inc i) :race race :status status})))
+                             (drop 1 (first (get api-scores "planets"))))]
+    {:raw api-scores :players players}))
 
