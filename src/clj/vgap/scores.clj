@@ -5,38 +5,32 @@
             [clojure.data.json :as json]
             [clj-time.core :as time]
             [clj-time.format :as timef]
+            [clj-time.coerce :as timec]
 ))
 
 (def vgap-schema {
                   :game {:nuid    [{:type :long
                                     :required true
-                                    :unique :value}]
-                         :start-date [{:type :instant
-                                       :required true}]
-                         :winners [{:type :ref
-                                    :cardinality :many
-                                    :ref {:ns :player}}]
-                         :players [{:type :ref
-                                    :cardinality :many
-                                    :ref {:ns :player}}]}
-                  :player {:game   [{:type :ref
-                                     :required true
-                                     :ref {:ns :game}}]
-                           :race   [{:type :string}]
-                           :symbol [{:required true}]}
-                  :turn {:game [{:type :ref
-                                 :required true
-                                 :ref {:ns :game}}]
-                         :num  [{:type :long
-                                 :required true}]
-                         :date [{:type :instant
-                                 :required true}]}
+                                    :unique :identity}]
+                         :create-date [{:type :instant
+                                        :required true}]
+                         :start-date [{:type :instant}]
+                         :end-date [{:type :instant}]
+                         :name [{:required true
+                                 :index true}]
+                         :description [{:required true}]
+                         }
+                  :player {:game [{:type :ref
+                                   :required true
+                                   :ref {:ns :game}}]
+                           :race [{:type :string}]
+                           :num  [{:type :long
+                                   :required true}]}
                   :scoreboard {:player     [{:type :ref
                                              :required true
                                              :ref {:ns :player}}]
-                               :turn       [{:type :ref
-                                             :required true
-                                             :ref {:ns :turn}}]
+                               :turn_num   [{:type :long
+                                             :required true}]
                                :planets    [{:type :long
                                              :required true}]
                                :bases      [{:type :long
@@ -52,19 +46,24 @@
                                :priority   [{:type :long
                                              :required true}]}
                   :account {:name [{:required true
+                                    :unique :identity}]
+                            :nuid [{:type :long
                                     :unique :value}]}
                   :event {:type    [{:type :enum
                                      :required true
                                      :enum {:ns :event.type
-                                            :values #{:join}}}]
-                          :subject [{:type :ref
-                                     :required :true}]
-                          :object  [{:type :ref}]
-                          :date    [{:type :instant
-                                     :required true}]}
+                                            :values #{:join :resign :drop :dead :win :finish}}}]
+                          :player   [{:type :ref
+                                      :required :true
+                                      :ref {:ns :player}}]
+                          :account  [{:type :ref
+                                      :ref {:ns :account}}]
+                          :date     [{:type :instant
+                                      :required true}]
+                          :turn_num [{:type :long}]}
                  })
 
-(def adi-db (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
+(def adi-ds (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
 
 (def nu-datetime-format (timef/formatter "MM/dd/YYYY h:mm:ss a"))
 
@@ -79,13 +78,6 @@
       (if (empty? others)
           string
           (apply string-replace string (first others) (second others) (drop 2 others)))))
-
-(defn user-games [username]
-  (mapcat #(json/read-str
-             (:body (client/get "http://api.planets.nu/games/list"
-                                {:query-params {"username" username
-                                                "scope" %}})))
-          ["0" "1"]))
 
 (defn fetch-game-events [gameid]
   (let [events (get (json/read-str
@@ -168,4 +160,42 @@
                        (keys turn-to-nested-planets))
         ]
     {:raw api-scores :players players :scores scores}))
+
+(defn fetch-rated-games []
+  (let [api-games (json/read-str
+                          (:body (client/get "http://api.planets.nu/games/list?status=2,3"
+                                             {:query-params {"status" "2,3"}})))
+        games (map (fn [g]
+                     (let [end-date (if (g "dateended") (parse-datetime-as-date (g "dateended")))
+                           create-date (parse-datetime-as-date (g "datecreated"))]
+                       (merge {:name (g "name") :description (g "description")
+                               :created create-date
+                               :game-id (g "id")}
+                              (if (and end-date (not (.isBefore end-date create-date)))
+                                  {:ended end-date}
+                                  {}))))
+                   api-games)
+        rated-games (remove (fn [g] (re-find #"mentor"
+                                             (.toLowerCase (:description g))))
+                            games)
+        ]
+    rated-games))
+
+(defn import-rated-game-list [ds]
+  (let [games (map (fn [g]
+                     {:game (merge (if (:ended g) {:end-date (timec/to-date (:ended g))} {})
+                                   {:nuid (:game-id g)
+                                    :create-date (timec/to-date (:created g))
+                                    :name (:name g)
+                                    :description (:description g)})})
+                   (fetch-rated-games))]
+    (adi/insert! ds (vec games))))
+
+(defn load-game-list [ds]
+  "Loads game records from database"
+  (adi/select ds :game))
+
+(defn load-game [ds nuid]
+  "Loads specific game record from database by Nu game ID"
+  (adi/select ds {:game {:nuid nuid}} :first true))
 

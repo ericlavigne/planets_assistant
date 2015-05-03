@@ -4,9 +4,10 @@
             [adi.core :as adi]
             [datomic.api :as datomic]
             [clj-time.core :as time]
+            [clj-time.coerce :as timec]
 ))
 
-(defn create-adi-test-db []
+(defn create-adi-test-ds []
   (adi/connect! "datomic:mem://vgap" vgap-schema true true))
 
 (deftest parsing-test
@@ -15,8 +16,6 @@
            (parse-datetime-as-date "9/23/2014 6:35:52 PM")))))
 
 (deftest fetch-data-test
-  (testing "Create a test database"
-    (create-adi-test-db))
   (testing "Fetch events for NQ-PLS-70"
     (let [pls-events (fetch-game-events 100282)
           expected-events [{:type :join :player-num 6 :account-name "ericlavigne" :account-id 20214 :turn 1}
@@ -56,4 +55,14 @@
                          (get tests-and-place 1)
                          [(get tests-and-place 1)])))))))
 )
+
+(deftest import-test
+  (testing "import games and load one of them"
+    (let [ds (create-adi-test-ds)]
+      (import-rated-game-list ds)
+      (is (= (load-game ds 815)
+             {:game {:name "Rebirth 1", :nuid 815,
+                     :create-date (timec/to-date (time/local-date 2010 11 3))
+                     :end-date (timec/to-date (time/local-date 2011 6 30))
+                     :description "This is the first Alpha Test Game. Standard fixed race game running every day for the first month and 3 turns/week after. Game ends when one player achieves 65% military score.<br/><br/>Warning: This is an alpha game. We will encounter bugs and may even need to play a turn or two over again. Please do not join this game unless you are willing to come in with a light heart and an eye for improving the game. This game is for fun, an opportunity to be involved in the very first games to run on VGA Planets Nu."}})))))
 
