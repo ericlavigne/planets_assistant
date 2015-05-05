@@ -75,7 +75,7 @@
   (testing "import details of some games"
     (let [ds (create-adi-test-ds)]
       (import-rated-game-list ds)
-      (import-game-details adi-ds 815)
-      (import-game-details adi-ds 32562)))
+      (import-game-details ds 815)
+      (import-game-details ds 32562)))
 )
 

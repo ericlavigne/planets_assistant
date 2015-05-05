@@ -125,10 +125,13 @@
         uncategorized (clojure.set/difference (set events)
                                               (set (concat joins resigns drops deads creates starts wins almost-wins)))
         ]
-    (map (fn [e]
-           (if (= 0 (:player-num e))
-               (dissoc e :player-num)
-               e))
+    (map (comp #(if (= 0 (:player-num %))
+                    (dissoc % :player-num)
+                    %)
+               #(if (:account-name %)
+                    (assoc % :account-name (.toLowerCase (:account-name %)))
+                    %)
+         )
          (concat processed-joins processed-resigns processed-drops
                  processed-deads processed-creates processed-starts
                  processed-wins
@@ -141,7 +144,7 @@
                         "scores" :api-no-scores)
         players (map-indexed (fn [i p]
                                (let [race (string-replace p #" \(.*" "")
-                                     name (string-replace p #".*\(" "" #"\)" "")
+                                     name (.toLowerCase (string-replace p #".*\(" "" #"\)" ""))
                                      status (case name "dead" :dead "open" :open :live)]
                                  (merge (if (= status :live) {:account-name name} {})
                                         {:player-num (inc i) :race race :status status})))
