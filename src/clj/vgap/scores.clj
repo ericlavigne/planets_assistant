@@ -25,7 +25,9 @@
                                    :required true
                                    :ref {:ns :game}}]
                            :num  [{:type :long
-                                   :required true}]
+                                   :required true
+                                   :restrict ["player-num of 0 is placeholder, not real player-num"
+                                              #(> % 0)]}]
                            :race [{:type :string}]}
                   :scoreboard {:key-game-player-turn [{:required true :unique :identity}]
                                :player     [{:type :ref
@@ -40,7 +42,9 @@
                   :account {:name [{:required true
                                     :unique :identity}]
                             :nuid [{:type :long
-                                    :unique :value}]}
+                                    :unique :value
+                                    :restrict ["account-id of 0 is placeholder, not real ID"
+                                               #(> % 0)]}]}
                   :event {:key-type-game-player-turn-account [{:required true :unique :identity}]
                           :type    [{:type :enum
                                      :required true
@@ -227,7 +231,7 @@
                                                                :military (:military s)}})
                                          (:scores api-scores))))
         accounts-from-events (adi/insert! ds (vec (map (fn [e] {:account (merge {:name (:account-name e)}
-                                                                                (if (:account-id e)
+                                                                                (if (and (:account-id e) (< 0 (:account-id e)))
                                                                                     {:nuid (e :account-id)}
                                                                                     {}))})
                                                        (filter #(#{:join :resign :drop :win} (:type %))
