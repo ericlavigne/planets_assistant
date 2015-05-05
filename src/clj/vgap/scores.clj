@@ -20,36 +20,29 @@
                                  :index true}]
                          :description [{:required true}]
                          }
-                  :player {:game [{:type :ref
+                  :player {:key-game-num [{:required true :unique :identity}]
+                           :game [{:type :ref
                                    :required true
                                    :ref {:ns :game}}]
-                           :race [{:type :string}]
                            :num  [{:type :long
-                                   :required true}]}
-                  :scoreboard {:player     [{:type :ref
+                                   :required true}]
+                           :race [{:type :string}]}
+                  :scoreboard {:key-game-player-turn [{:required true :unique :identity}]
+                               :player     [{:type :ref
                                              :required true
                                              :ref {:ns :player}}]
-                               :turn_num   [{:type :long
+                               :turn-num   [{:type :long
                                              :required true}]
                                :planets    [{:type :long
                                              :required true}]
-                               :bases      [{:type :long
-                                             :required true}]
-                               :warships   [{:type :long
-                                             :required true}]
-                               :freighters [{:type :long
-                                             :required true}]
                                :military   [{:type :long
-                                             :required true}]
-                               :score      [{:type :long
-                                             :required true}]
-                               :priority   [{:type :long
                                              :required true}]}
                   :account {:name [{:required true
                                     :unique :identity}]
                             :nuid [{:type :long
                                     :unique :value}]}
-                  :event {:type    [{:type :enum
+                  :event {:key-type-game-player-turn-account [{:required true :unique :identity}]
+                          :type    [{:type :enum
                                      :required true
                                      :enum {:ns :event.type
                                             :values #{:join :resign :drop :dead :win :finish}}}]
@@ -58,9 +51,9 @@
                                       :ref {:ns :player}}]
                           :account  [{:type :ref
                                       :ref {:ns :account}}]
-                          :date     [{:type :instant
+                          :turn-num [{:type :long
                                       :required true}]
-                          :turn_num [{:type :long}]}
+                          :date     [{:type :instant}]}
                  })
 
 (def adi-ds (adi/connect! "datomic:dev://localhost:4334/vgap" vgap-schema false true))
@@ -122,18 +115,24 @@
                                                                  #" ha[sve]+ won.*" "")
                                                                "@" "")
                                                              " and ")]
-                                   (map (fn [name] {:type :win :turn (evt "turn") :account-name name
-                                                    :date (parse-datetime-as-date (evt "dateadded"))})
+                                   (map (fn [name] (if (= name "Game ended.")
+                                                       {:type :end :turn (evt "turn")}
+                                                       {:type :win :turn (evt "turn") :account-name name
+                                                        :date (parse-datetime-as-date (evt "dateadded"))}))
                                         account-names)))
                                wins)
         almost-wins (filter #(= 5 (% "eventtype")) events)
         uncategorized (clojure.set/difference (set events)
                                               (set (concat joins resigns drops deads creates starts wins almost-wins)))
         ]
-    (concat processed-joins processed-resigns processed-drops
-            processed-deads processed-creates processed-starts
-            processed-wins
-            uncategorized)))
+    (map (fn [e]
+           (if (= 0 (:player-num e))
+               (dissoc e :player-num)
+               e))
+         (concat processed-joins processed-resigns processed-drops
+                 processed-deads processed-creates processed-starts
+                 processed-wins
+                 uncategorized))))
 
 (defn fetch-game-scores [gameid]
   (let [api-scores (get (json/read-str
@@ -198,4 +197,92 @@
 (defn load-game [ds nuid]
   "Loads specific game record from database by Nu game ID"
   (adi/select ds {:game {:nuid nuid}} :first true))
+
+(defn game-entity-id [ds nuid]
+  (let [rec (adi/select ds {:game {:nuid nuid}} :first true :ids true)]
+    (:id (:db rec))))
+
+(defn import-game-details [ds game-nuid]
+  "Imports players, scores, and events for specified game. Game should already be in the datasource."
+  (let [api-events (fetch-game-events game-nuid)
+        api-scores (fetch-game-scores game-nuid)
+        game-id (game-entity-id ds game-nuid)
+        _ (if (nil? game-id) (throw (Exception. (str "Game not found: " game-nuid))))
+        players (adi/insert! ds (vec (map (fn [p] {:player {:key-game-num (str game-nuid "-" (:player-num p))
+                                                            :game game-id
+                                                            :num (:player-num p)
+                                                            :race (:race p)}})
+                                          (:players api-scores))))
+        pnum-to-id (into {}
+                         (map (fn [p] [(:num (:player p))
+                                       (:id (:db p))])
+                              players))
+        scores (adi/insert! ds (vec (map (fn [s] {:scoreboard {:key-game-player-turn (str game-nuid "-" (:player-num s) "-" (:turn s))
+                                                               :player (pnum-to-id (:player-num s))
+                                                               :turn-num (:turn s)
+                                                               :planets (:planets s)
+                                                               :military (:military s)}})
+                                         (:scores api-scores))))
+        accounts-from-events (adi/insert! ds (vec (map (fn [e] {:account (merge {:name (:account-name e)}
+                                                                                (if (:account-id e)
+                                                                                    {:nuid (e :account-id)}
+                                                                                    {}))})
+                                                       (filter #(#{:join :resign :drop :win} (:type %))
+                                                               api-events))))
+        accounts-from-scores (adi/insert! ds (vec (map (fn [p] {:account {:name (:account-name p)}})
+                                                       (filter :account-name (:players api-scores)))))
+        account-name-to-id (merge (into {} (map (fn [a] [(:name (:account a))
+                                                         (:id (:db a))])
+                                                accounts-from-events))
+                                  (into {} (map (fn [a] [(:name (:account a))
+                                                         (:id (:db a))])
+                                                accounts-from-scores)))
+        dead-events (adi/insert! ds (vec (filter #(:player (:event %))
+                                                 (map (fn [e] {:event {:key-type-game-player-turn-account
+                                                                             (str ":dead-" game-nuid "-" (:player-num e) "-" (:turn e) "-")
+                                                                       :type :dead
+                                                                       :player (pnum-to-id (:player-num e))
+                                                                       :turn-num (:turn e)}})
+                                                      (filter #(= :dead (:type %)) api-events)))))
+        account-events (let [account-api-events (filter #(#{:join :resign :drop :win} (:type %)) api-events)
+                             _ (println (str "account-api-events: " (vec account-api-events)))
+                             events-for-insertion
+                               (filter #(:player (:event %))
+                                       (map (fn [e]
+                                              (let [pnum (or (:player-num e)
+                                                             (first (map :player-num
+                                                                         (filter #(= (:account-name e)
+                                                                                     (:account-name %))
+                                                                                 (:players api-scores)))))]
+                                                {:event (merge {:key-type-game-player-turn-account
+		                                                      (str (:type e) "-" game-nuid "-" (:player-num e)
+		                                                           "-" (:turn e) "-" (:account-name e))
+		                                                :type (:type e)
+		                                                :player (pnum-to-id pnum)
+		                                                :account (account-name-to-id (:account-name e))
+		                                                :turn-num (:turn e)}
+		                                               (if (:date e) {:date (timec/to-date (:date e))} {}))}))
+		                            account-api-events))]
+                         (println (str "events-for-insertion: " (vec events-for-insertion)))
+		         (adi/insert! ds (vec events-for-insertion)))
+        finish (first (filter #(#{:win :end} (:type %)) api-events))
+        finish-events (if finish (adi/insert! ds (vec (map (fn [p] {:event {:key-type-game-player-turn-account
+                                                                                 (str ":finish-" game-nuid "-" (:player-num p)
+                                                                                      "-" (:turn finish) "-" (:account-name p))
+                                                                            :type :finish
+                                                                            :player (pnum-to-id (:player-num p))
+                                                                            :account (account-name-to-id (:account-name p))
+                                                                            :turn-num (:turn finish)}})
+                                                           (filter :account-name (:players api-scores))))))
+        start (first (filter #(= :start (:type %)) api-events))
+        _ (if start (adi/update! ds {:game/nuid game-nuid} {:game/start-date (timec/to-date (:date start))}))
+        ]
+    nil))
+
+(defn import-all-game-details [ds]
+  (doseq [g (import-rated-game-list ds)]
+    (let [game-id (:nuid (:game g))]
+      (println "Importing game " game-id)
+      (import-game-details ds game-id)))
+  nil)
 
