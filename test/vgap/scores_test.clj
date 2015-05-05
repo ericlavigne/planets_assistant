@@ -72,9 +72,10 @@
                      :create-date (timec/to-date (time/local-date 2010 11 3))
                      :end-date (timec/to-date (time/local-date 2011 6 30))
                      :description "This is the first Alpha Test Game. Standard fixed race game running every day for the first month and 3 turns/week after. Game ends when one player achieves 65% military score.<br/><br/>Warning: This is an alpha game. We will encounter bugs and may even need to play a turn or two over again. Please do not join this game unless you are willing to come in with a light heart and an eye for improving the game. This game is for fun, an opportunity to be involved in the very first games to run on VGA Planets Nu."}}))))
-  (testing "import details of one game"
+  (testing "import details of some games"
     (let [ds (create-adi-test-ds)]
       (import-rated-game-list ds)
-      (import-game-details adi-ds 815)))
+      (import-game-details adi-ds 815)
+      (import-game-details adi-ds 32562)))
 )
 
