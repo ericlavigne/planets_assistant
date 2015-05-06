@@ -308,3 +308,37 @@
       (import-game-details ds game-id)))
   nil)
 
+(defn find-join-events [ds]
+  (datomic/q '[:find ?account-name ?game-nuid :where
+               [?e :event/type :event.type/join]
+               [?e :event/player ?p]
+               [?p :player/game ?g]
+               [?g :game/nuid ?game-nuid]
+               [?e :event/account ?a]
+               [?a :account/name ?account-name]]
+             (datomic/db (:connection ds))))
+
+(defn find-win-events [ds]
+  (datomic/q '[:find ?account-name ?game-nuid :where
+               [?e :event/type :event.type/win]
+               [?e :event/player ?p]
+               [?p :player/game ?g]
+               [?g :game/nuid ?game-nuid]
+               [?e :event/account ?a]
+               [?a :account/name ?account-name]]
+             (datomic/db (:connection ds))))
+
+(defn calculate-ratings [ds]
+  (let [win-events (find-win-events ds)
+        join-events (find-join-events ds)
+        rated-games (clojure.set/intersection (set (map second win-events))
+                                              (set (map second join-events)))
+        rated-joins-by-player (group-by first (filter #(rated-games (second %)) join-events))
+        rated-wins-by-player (group-by first (filter #(rated-games (second %)) win-events))
+        rated-players (keys (merge rated-joins-by-player rated-wins-by-player))]
+    (map (fn [p] (let [participated (count (set (concat (get rated-joins-by-player p [])
+                                                        (get rated-wins-by-player p []))))
+                       won (count (get rated-wins-by-player p []))]
+                   [p (Math/round (/ (* 100.0 won) (inc participated)))]))
+         rated-players)))
+
