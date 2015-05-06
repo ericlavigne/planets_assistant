@@ -1,6 +1,7 @@
 (ns vgap.handler
   (:require [vgap.dev :refer [browser-repl start-figwheel]]
             [vgap.core :as vgap]
+            [vgap.scores :as scores]
             [compojure.core :refer [GET ANY defroutes]]
             [compojure.route :refer [not-found resources]]
             [ring.middleware.defaults :refer [site-defaults wrap-defaults]]
@@ -22,6 +23,8 @@
            (if (or (nil? api-key) (= api-key :login-fail))
                {:success false}
                {:success true :username username :password password :api-key api-key}))))
+  (ANY "/ratings" []
+       (json-response (scores/calculate-ratings scores/adi-ds)))
   (resources "/")
   (not-found "Not found"))
 

@@ -62,10 +62,31 @@
                                           })))}]
 ])))
 
+(defn scoreboard []
+  (let [ratings (atom [])
+        updater (fn [] (GET "/ratings"
+                            :params {}
+                            :response-format :json
+                            :handler #(reset! ratings %)
+                            :error-handler (fn [{:keys [status status-text]}]
+                                             (.log js/console
+                                                   (str "something bad happened: " status
+                                                        " " status-text)))))]
+    (fn []
+      (updater)
+      (js/setTimeout updater 15000)
+      [:div
+        [:h1 "Scoreboard"]
+        [:table [:tr [:th "Account"] [:th "Rating"]]
+                (for [r @ratings]
+                  [:tr [:td (r "account-name")] [:td (r "rating")]])]])))
+
 (defn main-page []
-  (if (:username @user)
-      [home-page]
-      [login-page]))
+  [:div
+    [scoreboard]
+    (if (:username @user)
+        [home-page]
+        [login-page])])
 
 ;; -------------------------
 ;; Initialize app

@@ -336,9 +336,10 @@
         rated-joins-by-player (group-by first (filter #(rated-games (second %)) join-events))
         rated-wins-by-player (group-by first (filter #(rated-games (second %)) win-events))
         rated-players (keys (merge rated-joins-by-player rated-wins-by-player))]
-    (map (fn [p] (let [participated (count (set (concat (get rated-joins-by-player p [])
-                                                        (get rated-wins-by-player p []))))
-                       won (count (get rated-wins-by-player p []))]
-                   [p (Math/round (/ (* 100.0 won) (inc participated)))]))
-         rated-players)))
+    (reverse (sort-by :rating
+                      (map (fn [p] (let [participated (count (set (concat (get rated-joins-by-player p [])
+                                                                          (get rated-wins-by-player p []))))
+                                         won (count (get rated-wins-by-player p []))]
+                                     {:account-name p :rating (Math/round (/ (* 100.0 won) (inc participated)))}))
+                           rated-players)))))
 
