@@ -6,6 +6,7 @@
             [clj-time.core :as time]
             [clj-time.format :as timef]
             [clj-time.coerce :as timec]
+            [medley.core :as m]
 ))
 
 (def vgap-schema {
@@ -76,6 +77,10 @@
           string
           (apply string-replace string (first others) (second others) (drop 2 others)))))
 
+(defn merge-list-by [f list]
+  (vec (map #(apply merge %)
+            (vals (group-by f list)))))
+
 (defn fetch-game-events [gameid]
   (let [events (get (json/read-str
                       (:body (client/get "http://api.planets.nu/game/loadevents"
@@ -129,17 +134,19 @@
         uncategorized (clojure.set/difference (set events)
                                               (set (concat joins resigns drops deads creates starts wins almost-wins)))
         ]
-    (map (comp #(if (= 0 (:player-num %))
-                    (dissoc % :player-num)
-                    %)
-               #(if (:account-name %)
-                    (assoc % :account-name (.toLowerCase (:account-name %)))
-                    %)
-         )
-         (concat processed-joins processed-resigns processed-drops
-                 processed-deads processed-creates processed-starts
-                 processed-wins
-                 uncategorized))))
+    (vec
+      (map (comp #(if (= 0 (:player-num %))
+                      (dissoc % :player-num)
+                      %)
+                 #(if (:account-name %)
+                      (assoc % :account-name (.toLowerCase (:account-name %)))
+                      %)
+           )
+           (remove #(#{"dead" "open"} (:account-name %))
+             (concat processed-joins processed-resigns processed-drops
+                     processed-deads processed-creates processed-starts
+                     processed-wins
+                     uncategorized))))))
 
 (defn fetch-game-scores [gameid]
   (let [api-scores (get (json/read-str
@@ -211,7 +218,9 @@
 
 (defn import-game-details [ds game-nuid]
   "Imports players, scores, and events for specified game. Game should already be in the datasource."
-  (let [api-events (fetch-game-events game-nuid)
+  (let [_ (println (str "\nimport game details for game: " game-nuid))
+        api-events (fetch-game-events game-nuid)
+        _ (println (str "\napi-events: " api-events))
         api-scores (fetch-game-scores game-nuid)
         game-id (game-entity-id ds game-nuid)
         _ (if (nil? game-id) (throw (Exception. (str "Game not found: " game-nuid))))
@@ -230,20 +239,26 @@
                                                                :planets (:planets s)
                                                                :military (:military s)}})
                                          (:scores api-scores))))
-        accounts-from-events (adi/insert! ds (vec (map (fn [e] {:account (merge {:name (:account-name e)}
-                                                                                (if (and (:account-id e) (< 0 (:account-id e)))
-                                                                                    {:nuid (e :account-id)}
-                                                                                    {}))})
-                                                       (filter #(#{:join :resign :drop :win} (:type %))
-                                                               api-events))))
+        accounts-from-events (let [event-accounts (vec (m/distinct-by #(:name (:account %))
+                                                                      (map (fn [e] {:account (merge {:name (:account-name e)}
+                                                                                                    (if (and (:account-id e) (< 0 (:account-id e)))
+                                                                                                        {:nuid (e :account-id)}
+                                                                                                        {}))})
+                                                                           (filter #(#{:join :resign :drop :win} (:type %))
+                                                                                   api-events))))]
+                               (println (str "\nevent-accounts: " event-accounts))
+                               (adi/insert! ds event-accounts))
+        _ (println (str "\naccounts-from-events: " accounts-from-events))
         accounts-from-scores (adi/insert! ds (vec (map (fn [p] {:account {:name (:account-name p)}})
                                                        (filter :account-name (:players api-scores)))))
+        _ (println (str "\naccounts-from-scores: " accounts-from-scores))
         account-name-to-id (merge (into {} (map (fn [a] [(:name (:account a))
                                                          (:id (:db a))])
                                                 accounts-from-events))
                                   (into {} (map (fn [a] [(:name (:account a))
                                                          (:id (:db a))])
                                                 accounts-from-scores)))
+        _ (println (str "\naccount-name-to-id: " account-name-to-id))
         dead-events (adi/insert! ds (vec (filter #(:player (:event %))
                                                  (map (fn [e] {:event {:key-type-game-player-turn-account
                                                                              (str ":dead-" game-nuid "-" (:player-num e) "-" (:turn e) "-")
@@ -252,7 +267,7 @@
                                                                        :turn-num (:turn e)}})
                                                       (filter #(= :dead (:type %)) api-events)))))
         account-events (let [account-api-events (filter #(#{:join :resign :drop :win} (:type %)) api-events)
-                             _ (println (str "account-api-events: " (vec account-api-events)))
+                             _ (println (str "\naccount-api-events: " (vec account-api-events)))
                              events-for-insertion
                                (filter #(:player (:event %))
                                        (map (fn [e]
@@ -270,7 +285,7 @@
 		                                                :turn-num (:turn e)}
 		                                               (if (:date e) {:date (timec/to-date (:date e))} {}))}))
 		                            account-api-events))]
-                         (println (str "events-for-insertion: " (vec events-for-insertion)))
+                         (println (str "\nevents-for-insertion: " (vec events-for-insertion)))
 		         (adi/insert! ds (vec events-for-insertion)))
         finish (first (filter #(#{:win :end} (:type %)) api-events))
         finish-events (if finish (adi/insert! ds (vec (map (fn [p] {:event {:key-type-game-player-turn-account
@@ -287,7 +302,7 @@
     nil))
 
 (defn import-all-game-details [ds]
-  (doseq [g (import-rated-game-list ds)]
+  (doseq [g (shuffle (import-rated-game-list ds))]
     (let [game-id (:nuid (:game g))]
       (println "Importing game " game-id)
       (import-game-details ds game-id)))

@@ -35,6 +35,7 @@
                  [environ "1.0.0"]
                  [leiningen "2.5.0"]
                  [figwheel "0.1.6-SNAPSHOT"]
+                 [medley "0.6.0"]
                  [cljs-ajax "0.3.6"]]
 
   :plugins [

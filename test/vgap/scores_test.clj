@@ -78,6 +78,7 @@
       (import-game-details ds 815)
       (import-game-details ds 32562)
       (import-game-details ds 41817)
+      (import-game-details ds 79766)
 ))
 )
 
