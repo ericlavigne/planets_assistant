@@ -7,7 +7,12 @@
             [clj-time.format :as timef]
             [clj-time.coerce :as timec]
             [medley.core :as m]
-))
+            [clojure.java.io :as io]
+            [vgap.core :as core]
+            [aws.sdk.s3 :as s3]
+  )
+  (:import java.io.FileInputStream
+           java.util.zip.ZipInputStream))
 
 (def vgap-schema {
                   :game {:nuid    [{:type :long
@@ -342,4 +347,60 @@
                                          won (count (get rated-wins-by-player p []))]
                                      {:account-name p :rating (Math/round (/ (* 100.0 won) (inc participated)))}))
                            rated-players)))))
+
+(defn fetch-game-full-from-nu [gameid]
+  (let [req (client/get "http://api.planets.nu/game/loadall"
+                        {:query-params {"gameid" gameid}
+                         :as :byte-array})
+        _ (assert (= 200 (:status req)) (str "Status: " (:status req)))
+        tmp-file (java.io.File/createTempFile (str "game-" gameid "-") ".zip")]
+    (with-open [w (io/output-stream tmp-file)]
+      (.write w (:body req)))
+    tmp-file))
+
+(defn transfer-game-full-nu-to-s3
+  ([gameid]
+     (transfer-game-full-nu-to-s3 gameid {:access-key (core/setting :aws-access-key) :secret-key (core/setting :aws-secret-key)}))
+  ([gameid creds]
+     (let [game-from-nu (fetch-game-full-from-nu gameid)]
+       (s3/put-multipart-object creds "vgap" (str "game/loadall/" gameid ".zip") game-from-nu)
+       (.delete game-from-nu))
+       nil))
+
+(defn fetch-game-full-from-s3
+  ([gameid]
+     (fetch-game-full-from-s3 gameid {:access-key (core/setting :aws-access-key) :secret-key (core/setting :aws-secret-key)}))
+  ([gameid creds]
+     (let [s3-res (s3/get-object creds "vgap" (str "game/loadall/" gameid ".zip"))
+           s3-bytes (org.apache.commons.io.IOUtils/toByteArray (:content s3-res))
+           tmp-file (java.io.File/createTempFile (str "game-" gameid "-") ".zip")]
+       (with-open [w (io/output-stream tmp-file)]
+         (.write w s3-bytes))
+       tmp-file)))
+
+; http://www.thecoderscorner.com/team-blog/java-and-jvm/12-reading-a-zip-file-from-java-using-zipinputstream
+;
+; (first (zip-file-map fetched-game (fn [s] (apply str (take 50 s)))))
+;
+;   => "{\"settings\": {\"name\":\"Nercodonia Sector\",\"turn\":0,"
+;
+(defn zip-file-map [file fun]
+  (let [buffer (byte-array 2048)
+        fis (FileInputStream. file)
+        zis (ZipInputStream. fis)
+        res (loop [zip-entry (.getNextEntry zis)
+                   zip-entry-pieces []
+                   results []]
+              (if (nil? zip-entry)
+                  results
+                  (let [len (.read zis buffer)]
+                    (if (> len 0)
+                        (recur zip-entry
+                               (conj zip-entry-pieces (String. buffer 0 len))
+                               results)
+                        (recur (.getNextEntry zis)
+                               []
+                               (conj results (fun (apply str zip-entry-pieces))))))))]
+    (.close zis)
+    res))
 

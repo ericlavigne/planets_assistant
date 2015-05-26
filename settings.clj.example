@@ -1,3 +1,5 @@
 {:test-username "TestUser"
- :test-password "P4$$w0rD"}
+ :test-password "P4$$w0rD"
+ :aws-access-key "my access key"
+ :aws-secret-key "my secret key"}
 

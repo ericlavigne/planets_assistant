@@ -36,6 +36,8 @@
                  [leiningen "2.5.0"]
                  [figwheel "0.1.6-SNAPSHOT"]
                  [medley "0.6.0"]
+                 [clj-aws-s3 "0.3.10" :exclusions [joda-time]]
+                 [commons-io "2.4"]
                  [cljs-ajax "0.3.6"]]
 
   :plugins [
